@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\Dev\")",
+      "Bash(dir \"C:\\Dev\\Webs\")",
+      "Bash(dir \"C:\\Dev\\Servers\")",
+      "Bash(dir \"C:\\Dev\\Apps\")",
+      "Bash(find:*)",
+      "WebSearch",
+      "Bash(mkdir:*)",
+      "Bash(npx create-next-app:*)",
+      "Bash(dir:*)",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run db:push:*)",
+      "Bash(npm run db:seed:*)",
+      "Bash(npm run dev)",
+      "Bash(node -e:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
