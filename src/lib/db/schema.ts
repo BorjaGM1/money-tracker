@@ -62,6 +62,30 @@ export const exchangeRates = sqliteTable("exchange_rates", {
   updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+// Spending categories with optional parent for 2-level hierarchy
+export const spendingCategories = sqliteTable("spending_categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  parentId: integer("parent_id"),
+  color: text("color"),
+  icon: text("icon"),
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+  displayOrder: integer("display_order").default(0),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Individual spending entries (mirrors earnings table)
+export const spending = sqliteTable("spending", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  categoryId: integer("category_id").notNull().references(() => spendingCategories.id),
+  amount: real("amount").notNull(),
+  currency: text("currency").notNull().default("EUR"),
+  date: text("date").notNull(), // ISO date: "2024-11-15"
+  notes: text("notes"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
 // App settings (key-value store)
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
@@ -83,5 +107,11 @@ export type NewMonthlyBalance = typeof monthlyBalances.$inferInsert;
 
 export type ExchangeRate = typeof exchangeRates.$inferSelect;
 export type NewExchangeRate = typeof exchangeRates.$inferInsert;
+
+export type SpendingCategory = typeof spendingCategories.$inferSelect;
+export type NewSpendingCategory = typeof spendingCategories.$inferInsert;
+
+export type Spending = typeof spending.$inferSelect;
+export type NewSpending = typeof spending.$inferInsert;
 
 export type Setting = typeof settings.$inferSelect;

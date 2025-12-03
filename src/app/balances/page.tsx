@@ -3,13 +3,13 @@ import { db, monthlyBalances, accounts } from "@/lib/db";
 import { desc, eq, and } from "drizzle-orm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatCurrency, getMonthName } from "@/lib/utils";
-import { Plus, Pencil, ArrowLeft } from "lucide-react";
+import { getMonthName } from "@/lib/utils";
+import { Plus, ArrowLeft } from "lucide-react";
 import { getDisplayCurrency, sumInCurrency, type Currency } from "@/lib/currency";
 import { CurrencySelector } from "@/components/currency-selector";
+import { BalancesTable, type YearGroup } from "@/components/balances-table";
 
-async function getMonthlySnapshots(displayCurrency: Currency) {
+async function getYearGroups(displayCurrency: Currency): Promise<YearGroup[]> {
   // Get distinct year/month combinations
   const periods = await db
     .selectDistinct({
@@ -19,7 +19,7 @@ async function getMonthlySnapshots(displayCurrency: Currency) {
     .from(monthlyBalances)
     .orderBy(desc(monthlyBalances.year), desc(monthlyBalances.month));
 
-  // For each period, calculate the total in display currency
+  // Calculate totals for each period
   const snapshots = [];
   for (const period of periods) {
     const balances = await db
@@ -48,12 +48,53 @@ async function getMonthlySnapshots(displayCurrency: Currency) {
     });
   }
 
-  return snapshots;
+  // Group by year
+  const yearMap = new Map<number, YearGroup>();
+
+  for (let i = 0; i < snapshots.length; i++) {
+    const snapshot = snapshots[i];
+    const prevSnapshot = snapshots[i + 1];
+    const difference = prevSnapshot ? snapshot.total - prevSnapshot.total : null;
+
+    if (!yearMap.has(snapshot.year)) {
+      yearMap.set(snapshot.year, {
+        year: snapshot.year,
+        latestTotal: snapshot.total, // First one we encounter is the latest (desc order)
+        yoyChange: 0, // Will calculate after grouping
+        months: [],
+      });
+    }
+
+    yearMap.get(snapshot.year)!.months.push({
+      year: snapshot.year,
+      month: snapshot.month,
+      total: snapshot.total,
+      difference,
+    });
+  }
+
+  // Calculate YoY change for each year
+  // Compare latest month's net worth to exactly 12 months ago (same month, previous year)
+  // If that month doesn't exist, assume 0
+  const snapshotMap = new Map<string, number>(); // "YYYY-MM" -> total
+  for (const s of snapshots) {
+    snapshotMap.set(`${s.year}-${s.month}`, s.total);
+  }
+
+  for (const group of yearMap.values()) {
+    // Find the latest month in this year
+    const latestMonth = group.months[0]; // First is latest (desc order)
+    const prevYearKey = `${latestMonth.year - 1}-${latestMonth.month}`;
+    const prevYearTotal = snapshotMap.get(prevYearKey) ?? 0;
+    group.yoyChange = group.latestTotal - prevYearTotal;
+  }
+
+  return Array.from(yearMap.values());
 }
 
 export default async function BalancesPage() {
   const displayCurrency = await getDisplayCurrency();
-  const snapshots = await getMonthlySnapshots(displayCurrency);
+  const yearGroups = await getYearGroups(displayCurrency);
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
@@ -88,7 +129,7 @@ export default async function BalancesPage() {
           Record account balances at day 1 of each month to track net worth over time.
         </p>
 
-        {snapshots.length === 0 ? (
+        {yearGroups.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
               <p>No balance snapshots recorded yet.</p>
@@ -100,46 +141,7 @@ export default async function BalancesPage() {
             </CardContent>
           </Card>
         ) : (
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Period</TableHead>
-                  <TableHead className="text-right">Net Worth</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {snapshots.map((snapshot, index) => {
-                  const prevSnapshot = snapshots[index + 1];
-                  const difference = prevSnapshot ? snapshot.total - prevSnapshot.total : null;
-
-                  return (
-                    <TableRow key={`${snapshot.year}-${snapshot.month}`}>
-                      <TableCell className="font-medium">
-                        {getMonthName(snapshot.month)} {snapshot.year}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="font-semibold">{formatCurrency(snapshot.total, displayCurrency)}</div>
-                        {difference !== null && (
-                          <div className={`text-sm ${difference >= 0 ? "text-green-600" : "text-red-600"}`}>
-                            {difference >= 0 ? "+" : ""}{formatCurrency(difference, displayCurrency)}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" asChild>
-                          <Link href={`/balances/${snapshot.year}/${snapshot.month}`}>
-                            <Pencil className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </Card>
+          <BalancesTable yearGroups={yearGroups} displayCurrency={displayCurrency} />
         )}
       </main>
     </div>

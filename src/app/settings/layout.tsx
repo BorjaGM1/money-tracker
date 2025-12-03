@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Wallet, TrendingUp } from "lucide-react";
+import { ArrowLeft, Wallet, TrendingUp, Tags } from "lucide-react";
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -31,6 +31,12 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
               <Link href="/settings/accounts">
                 <Wallet className="h-4 w-4 mr-2" />
                 Accounts
+              </Link>
+            </Button>
+            <Button variant="ghost" className="w-full justify-start" asChild>
+              <Link href="/settings/categories">
+                <Tags className="h-4 w-4 mr-2" />
+                Spending Categories
               </Link>
             </Button>
           </nav>

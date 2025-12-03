@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { db, earnings, earningSources, monthlyBalances, accounts } from "@/lib/db";
+import { db, earnings, earningSources, monthlyBalances, accounts, spending, spendingCategories } from "@/lib/db";
 import { desc, eq, sql, and, gte, lte } from "drizzle-orm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDifference, getMonthName } from "@/lib/utils";
-import { DollarSign, Wallet, TrendingUp, Settings, LogOut } from "lucide-react";
+import { DollarSign, Wallet, TrendingUp, TrendingDown, Settings, LogOut, MinusCircle } from "lucide-react";
 import { getDisplayCurrency, sumInCurrency, type Currency } from "@/lib/currency";
 import { CurrencySelector } from "@/components/currency-selector";
 
@@ -127,13 +127,68 @@ async function getStats(displayCurrency: Currency) {
     .orderBy(desc(earnings.date), desc(earnings.id))
     .limit(5);
 
+  // Get this month's spending with currencies
+  const monthSpendingList = await db
+    .select({
+      amount: spending.amount,
+      currency: spending.currency,
+    })
+    .from(spending)
+    .where(
+      and(
+        gte(spending.date, startOfMonth),
+        lte(spending.date, endOfMonth)
+      )
+    );
+
+  const thisMonthSpending = await sumInCurrency(
+    monthSpendingList.map((s) => ({ amount: s.amount, currency: s.currency })),
+    displayCurrency
+  );
+
+  // Get YTD spending with currencies
+  const ytdSpendingList = await db
+    .select({
+      amount: spending.amount,
+      currency: spending.currency,
+    })
+    .from(spending)
+    .where(gte(spending.date, startOfYear));
+
+  const ytdSpending = await sumInCurrency(
+    ytdSpendingList.map((s) => ({ amount: s.amount, currency: s.currency })),
+    displayCurrency
+  );
+
+  // Calculate net income
+  const thisMonthNetIncome = thisMonthEarnings - thisMonthSpending;
+
+  // Get recent spending
+  const recentSpending = await db
+    .select({
+      id: spending.id,
+      amount: spending.amount,
+      currency: spending.currency,
+      date: spending.date,
+      categoryName: spendingCategories.name,
+      categoryColor: spendingCategories.color,
+    })
+    .from(spending)
+    .innerJoin(spendingCategories, eq(spending.categoryId, spendingCategories.id))
+    .orderBy(desc(spending.date), desc(spending.id))
+    .limit(5);
+
   return {
     currentNetWorth,
     latestBalanceMonth: latestBalanceMeta ? { year: latestBalanceMeta.year, month: latestBalanceMeta.month } : null,
     monthlyChange,
     thisMonthEarnings,
+    thisMonthSpending,
+    thisMonthNetIncome,
     ytdEarnings,
+    ytdSpending,
     recentEarnings,
+    recentSpending,
   };
 }
 
@@ -183,6 +238,12 @@ export default async function DashboardPage() {
               Earnings
             </Link>
             <Link
+              href="/spending"
+              className="py-3 px-1 border-b-2 border-transparent text-muted-foreground hover:text-foreground text-sm"
+            >
+              Spending
+            </Link>
+            <Link
               href="/balances"
               className="py-3 px-1 border-b-2 border-transparent text-muted-foreground hover:text-foreground text-sm"
             >
@@ -193,8 +254,8 @@ export default async function DashboardPage() {
       </nav>
 
       <main className="container mx-auto px-4 py-8">
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        {/* Summary Cards - Row 1: Net Worth & Monthly Change */}
+        <div className="grid gap-4 md:grid-cols-2 mb-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Net Worth</CardTitle>
@@ -222,50 +283,99 @@ export default async function DashboardPage() {
               <p className="text-xs text-muted-foreground">From last month</p>
             </CardContent>
           </Card>
+        </div>
 
+        {/* Summary Cards - Row 2: This Month Earnings, Spending, Net Income */}
+        <div className="grid gap-4 md:grid-cols-3 mb-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">This Month</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">This Month Earnings</CardTitle>
+              <TrendingUp className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.thisMonthEarnings, displayCurrency)}</div>
+              <div className="text-2xl font-bold text-green-600">{formatCurrency(stats.thisMonthEarnings, displayCurrency)}</div>
               <p className="text-xs text-muted-foreground">
-                Earnings in {getMonthName(now.getMonth() + 1)}
+                Income in {getMonthName(now.getMonth() + 1)}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">YTD Earnings</CardTitle>
+              <CardTitle className="text-sm font-medium">This Month Spending</CardTitle>
+              <TrendingDown className="h-4 w-4 text-red-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{formatCurrency(stats.thisMonthSpending, displayCurrency)}</div>
+              <p className="text-xs text-muted-foreground">
+                Expenses in {getMonthName(now.getMonth() + 1)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Net Income</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.ytdEarnings, displayCurrency)}</div>
-              <p className="text-xs text-muted-foreground">Total in {now.getFullYear()}</p>
+              <div className={`text-2xl font-bold ${stats.thisMonthNetIncome >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {formatDifference(stats.thisMonthNetIncome, displayCurrency)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Earnings - Spending
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Summary Cards - Row 3: YTD Earnings & Spending */}
+        <div className="grid gap-4 md:grid-cols-2 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">YTD Earnings</CardTitle>
+              <TrendingUp className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{formatCurrency(stats.ytdEarnings, displayCurrency)}</div>
+              <p className="text-xs text-muted-foreground">Total income in {now.getFullYear()}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">YTD Spending</CardTitle>
+              <TrendingDown className="h-4 w-4 text-red-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{formatCurrency(stats.ytdSpending, displayCurrency)}</div>
+              <p className="text-xs text-muted-foreground">Total expenses in {now.getFullYear()}</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Quick Actions */}
-        <div className="grid gap-4 md:grid-cols-2 mb-8">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="flex gap-2">
-              <Button asChild>
-                <Link href="/earnings/new">Add Earning</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href={`/balances/${now.getFullYear()}/${now.getMonth() + 1}`}>
-                  Update Balances
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="text-base">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link href="/earnings/new">Add Earning</Link>
+            </Button>
+            <Button variant="secondary" asChild>
+              <Link href="/spending/new">Add Spending</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/balances/${now.getFullYear()}/${now.getMonth() + 1}`}>
+                Update Balances
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
 
+        {/* Recent Activity */}
+        <div className="grid gap-4 md:grid-cols-2 mb-8">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Recent Earnings</CardTitle>
@@ -280,15 +390,46 @@ export default async function DashboardPage() {
                       <div className="flex items-center gap-2">
                         <div
                           className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: earning.sourceColor || "#gray" }}
+                          style={{ backgroundColor: earning.sourceColor || "#888" }}
                         />
                         <span>{earning.sourceName}</span>
                         <span className="text-muted-foreground">
                           {new Date(earning.date).toLocaleDateString()}
                         </span>
                       </div>
-                      <span className="font-medium">
-                        {formatCurrency(earning.amount, earning.currency)}
+                      <span className="font-medium text-green-600">
+                        +{formatCurrency(earning.amount, earning.currency)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Recent Spending</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {stats.recentSpending.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No spending recorded yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {stats.recentSpending.map((entry) => (
+                    <div key={entry.id} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: entry.categoryColor || "#888" }}
+                        />
+                        <span>{entry.categoryName}</span>
+                        <span className="text-muted-foreground">
+                          {new Date(entry.date).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <span className="font-medium text-red-600">
+                        -{formatCurrency(entry.amount, entry.currency)}
                       </span>
                     </div>
                   ))}

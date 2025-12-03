@@ -15,7 +15,8 @@
       "Bash(npm run db:push:*)",
       "Bash(npm run db:seed:*)",
       "Bash(npm run dev)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
